@@ -2,10 +2,11 @@
 // last updated 2021-08-06 by mza
 
 // cobbled together from:
-// inkplate10 example code
+// inkplate10 example code/docs https://inkplate.readthedocs.io/en/latest/arduino.html#inkplate-drawthickline
 // rtc example code https://e-radionica.com/hr/blog/2020/05/21/kkm-pcf85063a-rtc/
-// Watchy example code
+// arduino ntp example code https://www.arduino.cc/en/Tutorial/LibraryExamples/Wifi101UdpNTPClient
 // adafruit example code
+// Watchy code https://github.com/mzandrew/Watchy
 // custom stuff
 
 #ifndef ARDUINO_INKPLATE10
