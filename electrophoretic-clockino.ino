@@ -1,5 +1,5 @@
 // written 2021-08-05 by mza
-// last updated 2021-08-06 by mza
+// last updated 2021-08-11 by mza
 
 // cobbled together from:
 // inkplate10 example code/docs https://inkplate.readthedocs.io/en/latest/arduino.html#inkplate-drawthickline
@@ -29,7 +29,12 @@
 #define SECONDS_TO_SLEEP (60)
 #define RTC_PIN GPIO_NUM_39
 
+#define LIGHT_COLOR (0)
+#define DARK_COLOR (1)
 Inkplate display(INKPLATE_1BIT); // Create an object on Inkplate library and also set library into 1 Bit mode (BW)
+//#define LIGHT_COLOR (7)
+//#define DARK_COLOR (0)
+//Inkplate display(INKPLATE_3BIT); // Create an object on Inkplate library and also set library into 3 Bit mode
 const int NTP_PACKET_SIZE = 48; // NTP time stamp is in the first 48 bytes of the message
 byte packetBuffer[NTP_PACKET_SIZE]; // buffer to hold incoming and outgoing packets
 WiFiUDP UDP;
@@ -37,8 +42,16 @@ PCF85063A rtc;
 bool should_draw_clock_face;
 
 // Inkplate10 is 1200x825
-#define CLOCK_CENTER_X (E_INK_WIDTH/2)
-#define CLOCK_CENTER_Y (E_INK_HEIGHT/2)
+#define PORTRAIT_MODE
+#ifdef PORTRAIT_MODE
+	#define CLOCK_CENTER_X (E_INK_HEIGHT/2)
+	//#define CLOCK_CENTER_Y (E_INK_WIDTH/2)
+	#define CLOCK_CENTER_Y (E_INK_HEIGHT/2) // to top-justify it
+#else
+	#define CLOCK_CENTER_X (E_INK_WIDTH/2)
+	//#define CLOCK_CENTER_X (E_INK_HEIGHT/2) // to left-justify it
+	#define CLOCK_CENTER_Y (E_INK_HEIGHT/2)
+#endif
 #define CIRCLE_RADIUS (410)
 #define ANNULAR_RING_SIZE (8)
 #define HOUR_TICK_SIZE (8)
@@ -197,14 +210,13 @@ void time_advance() {
 	}
 }
 
-#define MAX_COLOR (1)
 // https://inkplate.readthedocs.io/en/latest/arduino.html
-void drawClockFace(int color=MAX_COLOR) {
+void drawClockFace(int color=DARK_COLOR) {
 //	Serial.println("drawing clock face...");
 	Serial.println("starting annular ring");
 	display.fillCircle(CLOCK_CENTER_X, CLOCK_CENTER_Y, CIRCLE_RADIUS, color);
 	Serial.println("done with big circle");
-	display.fillCircle(CLOCK_CENTER_X, CLOCK_CENTER_Y, CIRCLE_RADIUS-ANNULAR_RING_SIZE, color ? 0 : MAX_COLOR);
+	display.fillCircle(CLOCK_CENTER_X, CLOCK_CENTER_Y, CIRCLE_RADIUS-ANNULAR_RING_SIZE, DARK_COLOR - color);
 	Serial.println("done with annular ring");
 	int16_t x, y, x1, y1;
 	uint16_t w, h;
@@ -241,7 +253,7 @@ void drawClockFace(int color=MAX_COLOR) {
 	}
 }
 
-void drawClock(tmElements_t time, int color=MAX_COLOR) {
+void drawClock(tmElements_t time, int color=DARK_COLOR) {
 	int16_t x, y;
 	int hour = time.Hour;
 	int minute = time.Minute;
@@ -256,15 +268,27 @@ void drawClock(tmElements_t time, int color=MAX_COLOR) {
 	display.fillCircle(CLOCK_CENTER_X, CLOCK_CENTER_Y, int(LITTLE_CIRCLE_RADIUS+.5), color);
 }
 
+void drawColors() {
+	int x=10, y=10, w=50, h=50;
+	y=10; y= 10; display.fillRect(x, y, w, h, 0);
+	x=10; y=110; display.fillRect(x, y, w, h, 1);
+	x=10; y=210; display.fillRect(x, y, w, h, 2);
+	x=10; y=310; display.fillRect(x, y, w, h, 3);
+	x=10; y=410; display.fillRect(x, y, w, h, 4);
+	x=10; y=510; display.fillRect(x, y, w, h, 5);
+	x=10; y=610; display.fillRect(x, y, w, h, 6);
+	x=10; y=710; display.fillRect(x, y, w, h, 7);
+}
+
 void draw_fresh_clock_face_if_necessary_or_just_clear_previous_clock_hands() {
 	if (should_draw_clock_face) {
 		display.clearDisplay();
 		Serial.println("done with cleardisplay");
-		drawClockFace(1);
-		Serial.println("done with drawclockface");
+		drawClockFace(DARK_COLOR);
+		Serial.println("done with drawclockface(DARK_COLOR)");
 	} else {
-		drawClock(lastTime, 0);
-		Serial.println("done with drawclock(0)");
+		drawClock(lastTime, LIGHT_COLOR);
+		Serial.println("done with drawclock(LIGHT_COLOR)");
 	}
 }
 
@@ -279,9 +303,9 @@ void get_time_from_ntp_or_rtc() {
 }
 
 void draw_new_clock_hands() {
-		drawClock(currentTime, 1);
+		drawClock(currentTime, DARK_COLOR);
 		lastTime = currentTime;
-		Serial.println("done with drawclock(1)");
+		Serial.println("done with drawclock(DARK_COLOR)");
 }
 
 void update_the_display() {
@@ -290,7 +314,7 @@ void update_the_display() {
 		Serial.println("done with full refresh");
 		should_draw_clock_face = false;
 	} else {
-		display.partialUpdate();
+		display.partialUpdate(); // Updates only the changed parts of the screen. (monochrome/INKPLATE_1BIT mode only!)
 		Serial.println("done with partial refresh");
 	}
 }
@@ -298,6 +322,9 @@ void update_the_display() {
 void setup() {
 	Serial.begin(115200);
 	display.begin(); // Init Inkplate library (you should call this function ONLY ONCE)
+	#ifdef PORTRAIT_MODE
+		display.setRotation(3);
+	#endif
 	Serial.println("\n\n");
 	#ifndef USE_DEEP_SLEEP
 //		display.clearDisplay();
@@ -361,6 +388,8 @@ void setup() {
 	draw_fresh_clock_face_if_necessary_or_just_clear_previous_clock_hands();
 	get_time_from_ntp_or_rtc();
 	draw_new_clock_hands();
+	//drawColors();
+	//Serial.println("done with drawColors()");
 }
 
 void loop() {
@@ -371,6 +400,9 @@ void loop() {
 		delay(10000);
 		Serial.println("getting ready for the next minute");
 		if (currentTime.Minute==0) {
+			should_draw_clock_face = true;
+		}
+		if (INKPLATE_3BIT==display.getDisplayMode()) {
 			should_draw_clock_face = true;
 		}
 		draw_fresh_clock_face_if_necessary_or_just_clear_previous_clock_hands();
