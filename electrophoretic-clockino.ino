@@ -42,7 +42,7 @@ PCF85063A rtc;
 bool should_draw_clock_face;
 
 // Inkplate10 is 1200x825
-#define PORTRAIT_MODE
+//#define PORTRAIT_MODE
 #ifdef PORTRAIT_MODE
 	#define CLOCK_CENTER_X (E_INK_HEIGHT/2)
 	//#define CLOCK_CENTER_Y (E_INK_WIDTH/2)
