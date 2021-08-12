@@ -399,9 +399,6 @@ void loop() {
 		Serial.println("");
 		delay(10000);
 		Serial.println("getting ready for the next minute");
-		if (currentTime.Minute==0) {
-			should_draw_clock_face = true;
-		}
 		if (INKPLATE_3BIT==display.getDisplayMode()) {
 			should_draw_clock_face = true;
 		}
@@ -411,6 +408,9 @@ void loop() {
 		Serial.println("done with time_advance");
 		draw_new_clock_hands();
 		rtc_fetch(); showtime();
+		if (currentTime.Minute==59) {
+			should_draw_clock_face = true;
+		}
 		unsigned int duration = 60000 - 1000*currentTime.Second - TIME_IN_MILLISECONDS_TO_REFRESH_THE_DISPLAY;
 		if (duration<8000 || 60000<duration) {
 //			Serial.print("skipping delay for "); Serial.println(duration);
