@@ -1,5 +1,5 @@
 // written 2021-08-05 by mza
-// last updated 2021-08-11 by mza
+// last updated 2021-08-13 by mza
 
 // cobbled together from:
 // inkplate10 example code/docs https://inkplate.readthedocs.io/en/latest/arduino.html#inkplate-drawthickline
@@ -22,6 +22,7 @@
 #include <PCF85063A.h> // ~/build/Arduino/libraries$ git clone https://github.com/e-radionicacom/PCF85063A-Arduino-Library
 #include "secrets.h" // for wifi name/password
 
+#define DEBUG
 //#define USE_DEEP_SLEEP
 #define MAX_WIFI_RETRIES (60)
 #define TIME_SET_DELAY_S (1) // positive fudge factor to allow for upload time, etc. (seconds, YMMV)
@@ -72,7 +73,8 @@ bool should_draw_clock_face;
 #define RADIANS_PER_DEGREE (PI/180.)
 //#define TIME_IN_MILLISECONDS_TO_DRAW_CLOCKFACE (4000)
 //#define TIME_IN_MILLISECONDS_TO_DRAW_CLOCKHANDS (3000)
-#define TIME_IN_MILLISECONDS_TO_REFRESH_THE_DISPLAY (1100)
+#define TIME_IN_MILLISECONDS_FOR_PARTIAL_REFRESH_OF_THE_DISPLAY (1100)
+#define TIME_IN_MILLISECONDS_FOR_FULL_REFRESH_OF_THE_DISPLAY (2100)
 
 #ifdef USE_DEEP_SLEEP
 	RTC_DATA_ATTR tmElements_t currentTime;
@@ -293,7 +295,11 @@ void draw_fresh_clock_face_if_necessary_or_just_clear_previous_clock_hands() {
 }
 
 void get_time_from_ntp_or_rtc() {
-	if (currentTime.Minute==57) {
+#ifdef DEBUG
+	if (57==currentTime.Minute) {
+#else
+	if (23==currentTime.Hour && 57==currentTime.Minute) {
+#endif
 		if (connectWiFi()) {
 			rtc_fetch(); showtime();
 			setTimeViaNTP();
@@ -395,10 +401,14 @@ void setup() {
 void loop() {
 	#ifndef USE_DEEP_SLEEP
 		Serial.println("\nloop()");
-		update_the_display();
+		update_the_display(); // clears should_draw_clock_face
 		Serial.println("");
-		delay(10000);
+		delay(30000); // aim for the center of the eye
 		Serial.println("getting ready for the next minute");
+		rtc_fetch(); showtime();
+		if (currentTime.Minute==59) {
+			should_draw_clock_face = true;
+		}
 		if (INKPLATE_3BIT==display.getDisplayMode()) {
 			should_draw_clock_face = true;
 		}
@@ -408,13 +418,15 @@ void loop() {
 		Serial.println("done with time_advance");
 		draw_new_clock_hands();
 		rtc_fetch(); showtime();
-		if (currentTime.Minute==59) {
-			should_draw_clock_face = true;
+		unsigned int duration = 60000 - 1000*currentTime.Second;
+		if (should_draw_clock_face ) {
+			duration -= TIME_IN_MILLISECONDS_FOR_FULL_REFRESH_OF_THE_DISPLAY;
+		} else {
+			duration -= TIME_IN_MILLISECONDS_FOR_PARTIAL_REFRESH_OF_THE_DISPLAY;
 		}
-		unsigned int duration = 60000 - 1000*currentTime.Second - TIME_IN_MILLISECONDS_TO_REFRESH_THE_DISPLAY;
 		if (duration<8000 || 60000<duration) {
 //			Serial.print("skipping delay for "); Serial.println(duration);
-			duration = 10000;
+			duration = 30000;
 		}
 		Serial.print("delaying for "); Serial.println(duration);
 		delay(duration);
