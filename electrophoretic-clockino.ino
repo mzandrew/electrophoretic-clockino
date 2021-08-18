@@ -1,5 +1,5 @@
 // written 2021-08-05 by mza
-// last updated 2021-08-13 by mza
+// last updated 2021-08-14 by mza
 
 // cobbled together from:
 // inkplate10 example code/docs https://inkplate.readthedocs.io/en/latest/arduino.html#inkplate-drawthickline
@@ -25,10 +25,12 @@
 #define DEBUG
 //#define USE_DEEP_SLEEP
 #define MAX_WIFI_RETRIES (60)
-#define TIME_SET_DELAY_S (1) // positive fudge factor to allow for upload time, etc. (seconds, YMMV)
-#define TIME_SET_DELAY_MS (1000) // extra negative fudge factor to tweak time (milliseconds, should be at least 1000 to wait for the ntp packet response)
+#define TIME_SET_DELAY_S (2) // positive fudge factor to allow for upload time, etc. (seconds, YMMV)
+#define TIME_SET_DELAY_MS (1500) // extra negative fudge factor to tweak time (milliseconds, should be at least 1000 to wait for the ntp packet response)
 #define SECONDS_TO_SLEEP (60)
 #define RTC_PIN GPIO_NUM_39
+#define NUMBER_OF_SLICES (20)
+#define TIME_SLICE (1000/NUMBER_OF_SLICES)
 
 #define LIGHT_COLOR (0)
 #define DARK_COLOR (1)
@@ -160,6 +162,7 @@ void setTimeViaNTP() {
 	//		Serial.print("epoch time (local) = "); Serial.println(epoch);
 			sprintf(timestring, "%02ld:%02ld:%02ld", (epoch%86400)/3600, (epoch%3600)/60, epoch%60);
 			Serial.print("ntp server responded with "); Serial.println(timestring);
+			Serial.flush();
 			const time_t fudge(TIME_SET_DELAY_S);
 			epoch += fudge;
 			currentTime.Hour   = (epoch%86400)/3600;
@@ -167,6 +170,7 @@ void setTimeViaNTP() {
 			currentTime.Second = epoch%60;
 			sprintf(timestring, "%02ld:%02ld:%02ld", currentTime.Hour, currentTime.Minute, currentTime.Second);
 			Serial.print("setting time to "); Serial.println(timestring);
+			Serial.flush();
 			rtc.setTime(currentTime.Hour, currentTime.Minute, currentTime.Second);
 		} else {
 			Serial.println("didn't get a response");
@@ -185,6 +189,7 @@ void showtime() {
 	char timestring[12];
 	sprintf(timestring, "%2d:%02d:%02d %s", hour, minute, second, ampm.c_str());
 	Serial.println(timestring);
+	Serial.flush();
 }
 
 void rtc_fetch() {
@@ -292,6 +297,7 @@ void draw_fresh_clock_face_if_necessary_or_just_clear_previous_clock_hands() {
 		drawClock(lastTime, LIGHT_COLOR);
 		Serial.println("done with drawclock(LIGHT_COLOR)");
 	}
+	Serial.flush();
 }
 
 void get_time_from_ntp_or_rtc() {
@@ -312,16 +318,35 @@ void draw_new_clock_hands() {
 		drawClock(currentTime, DARK_COLOR);
 		lastTime = currentTime;
 		Serial.println("done with drawclock(DARK_COLOR)");
+		Serial.flush();
 }
 
 void update_the_display() {
 	if (should_draw_clock_face) {
 		display.display();
 		Serial.println("done with full refresh");
+		Serial.flush();
 		should_draw_clock_face = false;
 	} else {
 		display.partialUpdate(); // Updates only the changed parts of the screen. (monochrome/INKPLATE_1BIT mode only!)
 		Serial.println("done with partial refresh");
+		Serial.flush();
+	}
+}
+
+void wait_for_next_second() {
+	Serial.flush();
+	rtc_fetch(); showtime();
+	uint8_t second = currentTime.Second;
+	for (int i=0; i<NUMBER_OF_SLICES; i++) {
+		rtc_fetch();
+		if (second != currentTime.Second) {
+			Serial.print("start of next second is now: ");
+			showtime();
+			return;
+		}
+		second = currentTime.Second;
+		delay(TIME_SLICE);
 	}
 }
 
@@ -417,6 +442,7 @@ void loop() {
 		time_advance(); showtime();
 		Serial.println("done with time_advance");
 		draw_new_clock_hands();
+		wait_for_next_second();
 		rtc_fetch(); showtime();
 		unsigned int duration = 60000 - 1000*currentTime.Second;
 		if (should_draw_clock_face ) {
@@ -431,6 +457,7 @@ void loop() {
 		Serial.print("delaying for "); Serial.println(duration);
 		delay(duration);
 		Serial.println("done with delay");
+		Serial.flush();
 	#endif
 }
 
