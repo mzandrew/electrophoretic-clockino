@@ -22,7 +22,15 @@
 #include <PCF85063A.h> // ~/build/Arduino/libraries$ git clone https://github.com/e-radionicacom/PCF85063A-Arduino-Library
 #include "secrets.h" // for wifi name/password
 
-bool rtc_is_broken = false; // I guess this happens sometimes...
+char hostname[] = "electrophoretic-clockino-1";
+bool rtc_is_broken = true; // I guess this happens sometimes...
+//char hostname[] = "electrophoretic-clockino-2";
+//bool rtc_is_broken = false; // I guess this happens sometimes...
+//char hostname[] = "electrophoretic-clockino-3";
+//bool rtc_is_broken = false; // I guess this happens sometimes...
+//char hostname[] = "electrophoretic-clockino-4";
+//bool rtc_is_broken = false; // I guess this happens sometimes...
+
 #define DEBUG
 //#define USE_DEEP_SLEEP // it does a full-refresh after coming out of deep sleep, so we don't use it
 #define MAX_WIFI_RETRIES (60)
@@ -95,6 +103,7 @@ int connectWiFi() {
 		return 1;
 	}
 	Serial.print("Connecting to " WLAN_SSID "... ");
+	WiFi.setHostname(hostname);
 	WiFi.begin(WLAN_SSID, WLAN_PASS);
 	uint8_t retries = MAX_WIFI_RETRIES;
 	while (WiFi.status() != WL_CONNECTED) {
@@ -375,6 +384,7 @@ void setup() {
 		display.setRotation(3);
 	#endif
 	Serial.println("\n\n");
+	Serial.println(hostname);
 	#ifndef USE_DEEP_SLEEP
 //		display.clearDisplay();
 //		display.display();
