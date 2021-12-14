@@ -63,6 +63,7 @@ byte packetBuffer[NTP_PACKET_SIZE]; // buffer to hold incoming and outgoing pack
 WiFiUDP UDP;
 PCF85063A rtc;
 bool should_draw_clock_face;
+unsigned int duration;
 
 // Inkplate10 is 1200x825
 //#define PORTRAIT_MODE
@@ -110,7 +111,7 @@ bool should_draw_clock_face;
 
 int connectWiFi() {
 	if (wifi_active) {
-		Serial.print("  IP address: "); Serial.println(WiFi.localIP());
+		Serial.print("IP address: "); Serial.println(WiFi.localIP());
 		return 1;
 	}
 	Serial.print("Connecting to " WLAN_SSID "... ");
@@ -385,6 +386,22 @@ void wait_for_next_second() {
 	}
 }
 
+unsigned int how_long_to_wait_until_just_before_the_end_of_the_minute(unsigned int extra=0) {
+	signed int duration_ms = 60000 - 1000*currentTime.Second - 1000*extra;
+	if (should_draw_clock_face) {
+		duration_ms -= TIME_IN_MILLISECONDS_FOR_FULL_REFRESH_OF_THE_DISPLAY;
+	} else {
+		duration_ms -= TIME_IN_MILLISECONDS_FOR_PARTIAL_REFRESH_OF_THE_DISPLAY;
+	}
+	if (duration_ms<0) {
+		duration_ms = 0;
+	}
+	if (55000<duration_ms) {
+		duration_ms = 30000;
+	}
+	return (unsigned int) duration_ms;
+}
+
 void setup() {
 	Serial.begin(115200);
 	display.begin(); // Init Inkplate library (you should call this function ONLY ONCE)
@@ -448,21 +465,23 @@ void setup() {
 		rtc.reset();
 	}
 	get_time_from_ntp_or_rtc();
-	lastTime = currentTime;
 	should_draw_clock_face = true;
+	duration = how_long_to_wait_until_just_before_the_end_of_the_minute(10);
+	if (duration<10000) {
+		time_advance();
+	}
+	lastTime = currentTime;
 	draw_fresh_clock_face_if_necessary_or_just_clear_previous_clock_hands();
-	get_time_from_ntp_or_rtc();
 	draw_new_clock_hands();
+	duration = how_long_to_wait_until_just_before_the_end_of_the_minute(30);
 	//drawColors();
 	//Serial.println("done with drawColors()");
 }
 
 void loop() {
-	unsigned int duration;
 	#ifndef USE_DEEP_SLEEP
 		Serial.println("");
 		update_the_display(); // clears should_draw_clock_face
-		duration = 30000; // aim for the center of the eye
 		Serial.print("delaying for "); Serial.println(duration);
 		delay(duration);
 		if (currentTime.Minute==59) {
@@ -477,19 +496,11 @@ void loop() {
 		//wait_for_next_second();
 		get_time_from_ntp_or_rtc();
 		showtime();
-		duration = 60000 - 1000*currentTime.Second;
-		if (should_draw_clock_face) {
-			duration -= TIME_IN_MILLISECONDS_FOR_FULL_REFRESH_OF_THE_DISPLAY;
-		} else {
-			duration -= TIME_IN_MILLISECONDS_FOR_PARTIAL_REFRESH_OF_THE_DISPLAY;
-		}
-		if (duration<8000 || 52000<duration) {
-//			Serial.print("skipping delay for "); Serial.println(duration);
-			duration = 30000;
-		}
+		duration = how_long_to_wait_until_just_before_the_end_of_the_minute();
 		Serial.print("delaying for "); Serial.println(duration);
 		delay(duration);
 //		Serial.flush();
+		duration = 30000; // aim for the center of the eye
 	#endif
 }
 
