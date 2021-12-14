@@ -22,8 +22,9 @@
 #include <PCF85063A.h> // ~/build/Arduino/libraries$ git clone https://github.com/e-radionicacom/PCF85063A-Arduino-Library
 #include "secrets.h" // for wifi name/password
 
+bool rtc_is_broken = false; // I guess this happens sometimes...
 #define DEBUG
-//#define USE_DEEP_SLEEP
+//#define USE_DEEP_SLEEP // it does a full-refresh after coming out of deep sleep, so we don't use it
 #define MAX_WIFI_RETRIES (60)
 #define TIME_SET_DELAY_S (2) // positive fudge factor to allow for upload time, etc. (seconds, YMMV)
 #define TIME_SET_DELAY_MS (1500) // extra negative fudge factor to tweak time (milliseconds, should be at least 1000 to wait for the ntp packet response)
@@ -175,7 +176,9 @@ void setTimeViaNTP() {
 		} else {
 			Serial.println("didn't get a response");
 		}
-		disconnectWiFi();
+		//disconnectWiFi();
+	} else {
+		Serial.println("Couldn't connect to Wifi (2)");
 	}
 //	return currentTime.Second - TIME_SET_DELAY_MS/1000;
 }
@@ -301,17 +304,32 @@ void draw_fresh_clock_face_if_necessary_or_just_clear_previous_clock_hands() {
 }
 
 void get_time_from_ntp_or_rtc() {
+	bool should_get_time_from_rtc = false;
+	if (rtc_is_broken) {
+		should_get_time_from_rtc = true;
+	}
+	if (0==currentTime.Hour && 0==currentTime.Minute) {
+		should_get_time_from_rtc = true;
+	}
 #ifdef DEBUG
 	if (57==currentTime.Minute) {
+		should_get_time_from_rtc = true;
+	}
 #else
 	if (23==currentTime.Hour && 57==currentTime.Minute) {
+		should_get_time_from_rtc = true;
+	}
 #endif
+	if (should_get_time_from_rtc) {
 		if (connectWiFi()) {
-			rtc_fetch(); showtime();
+			//rtc_fetch(); showtime();
 			setTimeViaNTP();
+		} else {
+			Serial.println("couldn't connect to WiFi (1)");
 		}
 	}
-	rtc_fetch(); showtime();
+	rtc_fetch();
+//	showtime();
 }
 
 void draw_new_clock_hands() {
@@ -408,12 +426,12 @@ void setup() {
 		esp_sleep_enable_ext0_wakeup(RTC_PIN, 0); //enable deep sleep wake on RTC interrupt
 		esp_deep_sleep_start();
 	#endif
-	rtc_fetch(); showtime();
-	if (currentTime.Hour==0 && currentTime.Minute==0) {
-		if (connectWiFi()) {
-			setTimeViaNTP();
-		}
-	}
+	get_time_from_ntp_or_rtc();
+//	if (rtc_is_broken || (currentTime.Hour==0 && currentTime.Minute==0)) {
+//		if (connectWiFi()) {
+//			setTimeViaNTP();
+//		}
+//	}
 	lastTime = currentTime;
 	should_draw_clock_face = true;
 	draw_fresh_clock_face_if_necessary_or_just_clear_previous_clock_hands();
@@ -424,13 +442,17 @@ void setup() {
 }
 
 void loop() {
+	unsigned int duration;
 	#ifndef USE_DEEP_SLEEP
-		Serial.println("\nloop()");
-		update_the_display(); // clears should_draw_clock_face
 		Serial.println("");
-		delay(30000); // aim for the center of the eye
-		Serial.println("getting ready for the next minute");
-		rtc_fetch(); showtime();
+		//Serial.println("\nloop()");
+		update_the_display(); // clears should_draw_clock_face
+		duration = 30000; // aim for the center of the eye
+		Serial.print("delaying for "); Serial.println(duration);
+		delay(duration);
+		//Serial.println("getting ready for the next minute");
+		get_time_from_ntp_or_rtc();
+		showtime();
 		if (currentTime.Minute==59) {
 			should_draw_clock_face = true;
 		}
@@ -438,19 +460,24 @@ void loop() {
 			should_draw_clock_face = true;
 		}
 		draw_fresh_clock_face_if_necessary_or_just_clear_previous_clock_hands();
-		get_time_from_ntp_or_rtc();
-		time_advance(); showtime();
-		Serial.println("done with time_advance");
+		if (should_draw_clock_face) {
+			get_time_from_ntp_or_rtc();
+		}
+		time_advance();
+		//Serial.println("done with time_advance");
 		draw_new_clock_hands();
-		wait_for_next_second();
-		rtc_fetch(); showtime();
-		unsigned int duration = 60000 - 1000*currentTime.Second;
-		if (should_draw_clock_face ) {
+		//wait_for_next_second();
+		if (!rtc_is_broken) {
+			get_time_from_ntp_or_rtc();
+			showtime();
+		}
+		duration = 60000 - 1000*currentTime.Second;
+		if (should_draw_clock_face) {
 			duration -= TIME_IN_MILLISECONDS_FOR_FULL_REFRESH_OF_THE_DISPLAY;
 		} else {
 			duration -= TIME_IN_MILLISECONDS_FOR_PARTIAL_REFRESH_OF_THE_DISPLAY;
 		}
-		if (duration<8000 || 60000<duration) {
+		if (duration<8000 || 52000<duration) {
 //			Serial.print("skipping delay for "); Serial.println(duration);
 			duration = 30000;
 		}
