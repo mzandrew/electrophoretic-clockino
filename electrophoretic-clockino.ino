@@ -1,5 +1,5 @@
 // written 2021-08-05 by mza
-// last updated 2021-08-14 by mza
+// last updated 2021-12-14 by mza
 
 // cobbled together from:
 // inkplate10 example code/docs https://inkplate.readthedocs.io/en/latest/arduino.html#inkplate-drawthickline
@@ -22,14 +22,25 @@
 #include <PCF85063A.h> // ~/build/Arduino/libraries$ git clone https://github.com/e-radionicacom/PCF85063A-Arduino-Library
 #include "secrets.h" // for wifi name/password
 
-char hostname[] = "electrophoretic-clockino-1";
-bool rtc_is_broken = true; // I guess this happens sometimes...
-//char hostname[] = "electrophoretic-clockino-2";
-//bool rtc_is_broken = false; // I guess this happens sometimes...
-//char hostname[] = "electrophoretic-clockino-3";
-//bool rtc_is_broken = false; // I guess this happens sometimes...
-//char hostname[] = "electrophoretic-clockino-4";
-//bool rtc_is_broken = false; // I guess this happens sometimes...
+#define SERIAL_NUMBER 1
+
+#if SERIAL_NUMBER==1
+	char hostname[] = "electrophoretic-clockino-1";
+	bool rtc_is_broken = true; // I guess this happens sometimes...
+	//bool rtc_is_broken = false; // I guess this happens sometimes...
+#elif SERIAL_NUMBER==2
+	char hostname[] = "electrophoretic-clockino-2";
+	bool rtc_is_broken = false; // I guess this happens sometimes...
+#elif SERIAL_NUMBER==3
+	char hostname[] = "electrophoretic-clockino-3";
+	bool rtc_is_broken = false; // I guess this happens sometimes...
+#elif SERIAL_NUMBER==4
+	char hostname[] = "electrophoretic-clockino-4";
+	bool rtc_is_broken = false; // I guess this happens sometimes...
+#else
+	char hostname[] = "electrophoretic-clockino-unknown";
+	bool rtc_is_broken = false; // I guess this happens sometimes...
+#endif
 
 #define DEBUG
 //#define USE_DEEP_SLEEP // it does a full-refresh after coming out of deep sleep, so we don't use it
@@ -185,9 +196,11 @@ void setTimeViaNTP() {
 		} else {
 			Serial.println("didn't get a response");
 		}
-		//disconnectWiFi();
+		if (!rtc_is_broken) {
+			disconnectWiFi();
+		}
 	} else {
-		Serial.println("Couldn't connect to Wifi (2)");
+		Serial.println("Couldn't connect to wifi");
 	}
 //	return currentTime.Second - TIME_SET_DELAY_MS/1000;
 }
@@ -330,12 +343,7 @@ void get_time_from_ntp_or_rtc() {
 	}
 #endif
 	if (should_get_time_from_rtc) {
-		if (connectWiFi()) {
-			//rtc_fetch(); showtime();
-			setTimeViaNTP();
-		} else {
-			Serial.println("couldn't connect to WiFi (1)");
-		}
+		setTimeViaNTP();
 	}
 	rtc_fetch();
 //	showtime();
@@ -436,12 +444,10 @@ void setup() {
 		esp_sleep_enable_ext0_wakeup(RTC_PIN, 0); //enable deep sleep wake on RTC interrupt
 		esp_deep_sleep_start();
 	#endif
+	if (rtc_is_broken) {
+		rtc.reset();
+	}
 	get_time_from_ntp_or_rtc();
-//	if (rtc_is_broken || (currentTime.Hour==0 && currentTime.Minute==0)) {
-//		if (connectWiFi()) {
-//			setTimeViaNTP();
-//		}
-//	}
 	lastTime = currentTime;
 	should_draw_clock_face = true;
 	draw_fresh_clock_face_if_necessary_or_just_clear_previous_clock_hands();
@@ -455,14 +461,10 @@ void loop() {
 	unsigned int duration;
 	#ifndef USE_DEEP_SLEEP
 		Serial.println("");
-		//Serial.println("\nloop()");
 		update_the_display(); // clears should_draw_clock_face
 		duration = 30000; // aim for the center of the eye
 		Serial.print("delaying for "); Serial.println(duration);
 		delay(duration);
-		//Serial.println("getting ready for the next minute");
-		get_time_from_ntp_or_rtc();
-		showtime();
 		if (currentTime.Minute==59) {
 			should_draw_clock_face = true;
 		}
@@ -470,17 +472,11 @@ void loop() {
 			should_draw_clock_face = true;
 		}
 		draw_fresh_clock_face_if_necessary_or_just_clear_previous_clock_hands();
-		if (should_draw_clock_face) {
-			get_time_from_ntp_or_rtc();
-		}
 		time_advance();
-		//Serial.println("done with time_advance");
 		draw_new_clock_hands();
 		//wait_for_next_second();
-		if (!rtc_is_broken) {
-			get_time_from_ntp_or_rtc();
-			showtime();
-		}
+		get_time_from_ntp_or_rtc();
+		showtime();
 		duration = 60000 - 1000*currentTime.Second;
 		if (should_draw_clock_face) {
 			duration -= TIME_IN_MILLISECONDS_FOR_FULL_REFRESH_OF_THE_DISPLAY;
@@ -493,8 +489,7 @@ void loop() {
 		}
 		Serial.print("delaying for "); Serial.println(duration);
 		delay(duration);
-		Serial.println("done with delay");
-		Serial.flush();
+//		Serial.flush();
 	#endif
 }
 
