@@ -21,8 +21,11 @@
 #include <rom/rtc.h>       // Include ESP32 library for RTC (needed for rtc_get_reset_reason() function)
 #include <PCF85063A.h> // ~/build/Arduino/libraries$ git clone https://github.com/e-radionicacom/PCF85063A-Arduino-Library
 #include "secrets.h" // for wifi name/password
+#include <time.h>
 
-#define SERIAL_NUMBER 1
+#define SERIAL_NUMBER 6
+
+bool fake_ntp_server_connection = false;
 
 #if SERIAL_NUMBER==1
 	char hostname[] = "electrophoretic-clockino-1";
@@ -36,6 +39,12 @@
 	bool rtc_is_broken = false; // I guess this happens sometimes...
 #elif SERIAL_NUMBER==4
 	char hostname[] = "electrophoretic-clockino-4";
+	bool rtc_is_broken = false; // I guess this happens sometimes...
+#elif SERIAL_NUMBER==5
+	char hostname[] = "electrophoretic-clockino-5";
+	bool rtc_is_broken = false; // I guess this happens sometimes...
+#elif SERIAL_NUMBER==6
+	char hostname[] = "electrophoretic-clockino-6";
 	bool rtc_is_broken = false; // I guess this happens sometimes...
 #else
 	char hostname[] = "electrophoretic-clockino-unknown";
@@ -155,13 +164,41 @@ void sendNTPpacket(IPAddress &address) {
 	packetBuffer[13]  = 0x4E;
 	packetBuffer[14]  = 49;
 	packetBuffer[15]  = 52;
-	UDP.beginPacket(address, 123); // NTP requests are to port 123
-	UDP.write(packetBuffer, NTP_PACKET_SIZE);
-	UDP.endPacket();
+	if (!fake_ntp_server_connection) {
+		UDP.beginPacket(address, 123); // NTP requests are to port 123
+		UDP.write(packetBuffer, NTP_PACKET_SIZE);
+		UDP.endPacket();
+	}
+}
+
+void setTimeViaNTP() {
+	// from https://randomnerdtutorials.com/esp32-ntp-timezones-daylight-saving/
+	struct tm timeinfo;
+	if (connectWiFi()) {
+		if (!fake_ntp_server_connection) {
+			configTime(0, 0, "pool.ntp.org");
+			if(!getLocalTime(&timeinfo)){
+				Serial.println("Failed to obtain time from ntp server");
+				return;
+			}
+			Serial.println("Got the time from ntp server");
+		} else {
+			Serial.println("faked the ntp server transaction");
+		}
+	}
+	setenv("TZ", TZ_STRING, 1); tzset();
+	if(!getLocalTime(&timeinfo)){
+		Serial.println("Failed to obtain time");
+		return;
+	}
+	Serial.println(&timeinfo, "%A, %B %d %Y %H:%M:%S zone %Z %z ");
+	rtc.setTime(timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
+	rtc.setDate(timeinfo.tm_wday, timeinfo.tm_mday, timeinfo.tm_mon, timeinfo.tm_year+1900);
+//	Serial.println(timeinfo.tm_year+1900);
 }
 
 // sendNTPpacket and NTP function code are from Arduino/libraries/WiFi101/examples/WiFiUdpNtpClient/WiFiUdpNtpClient.ino
-void setTimeViaNTP() {
+void old_setTimeViaNTP() {
 	if (connectWiFi()) {
 		unsigned int localPort = 2390; // local port to listen for UDP packets
 		IPAddress timeServer(132, 163, 97, 4); // ntp1.glb.nist.gov NTP server
@@ -183,45 +220,88 @@ void setTimeViaNTP() {
 			epoch += (UTC_OFFSET_HOURS) * 3600; // UTC_OFFSET_HOURS is a signed quantity
 	//		Serial.print("epoch time (local) = "); Serial.println(epoch);
 			sprintf(timestring, "%02ld:%02ld:%02ld", (epoch%86400)/3600, (epoch%3600)/60, epoch%60);
-			Serial.print("ntp server responded with "); Serial.println(timestring);
-			Serial.flush();
+			Serial.print("ntp server responded with "); Serial.println(timestring); Serial.flush();
 			const time_t fudge(TIME_SET_DELAY_S);
 			epoch += fudge;
 			currentTime.Hour   = (epoch%86400)/3600;
 			currentTime.Minute = (epoch%3600)/60;
 			currentTime.Second = epoch%60;
 			sprintf(timestring, "%02ld:%02ld:%02ld", currentTime.Hour, currentTime.Minute, currentTime.Second);
-			Serial.print("setting time to "); Serial.println(timestring);
-			Serial.flush();
+			Serial.print("setting time to "); Serial.println(timestring); Serial.flush();
 			rtc.setTime(currentTime.Hour, currentTime.Minute, currentTime.Second);
 		} else {
 			Serial.println("didn't get a response");
 		}
-		if (!rtc_is_broken) {
+//		if (!rtc_is_broken) {
 			disconnectWiFi();
-		}
+//		}
 	} else {
 		Serial.println("Couldn't connect to wifi");
 	}
 //	return currentTime.Second - TIME_SET_DELAY_MS/1000;
 }
 
+void setTime(int yr, int month, int mday, int hr, int minute, int sec, int isDst){
+	struct tm timeinfo;
+	timeinfo.tm_year = yr - 1900;
+	timeinfo.tm_mon = month-1;
+	timeinfo.tm_mday = mday;
+	timeinfo.tm_hour = hr;
+	timeinfo.tm_min = minute;
+	timeinfo.tm_sec = sec;
+	timeinfo.tm_isdst = isDst; // 1 or 0
+	time_t t = mktime(&timeinfo);
+	Serial.printf("Setting time: %s", asctime(&timeinfo));
+	struct timeval now = { .tv_sec = t };
+	settimeofday(&now, NULL);
+}
+
 void showtime() {
+	struct tm timeinfo;
+	if(!getLocalTime(&timeinfo)){
+		Serial.println("Failed to obtain time");
+		return;
+	}
+	Serial.println(&timeinfo, "%A, %B %d %Y %H:%M:%S zone %Z %z ");
+}
+
+void old_showtime() {
 	int hour = currentTime.Hour;
 	String ampm = int(hour/12) ? "pm" : "am";
 	hour %= 12; if (hour==0) { hour = 12; }
 	int minute = currentTime.Minute;
 	int second = currentTime.Second;
-	char timestring[12];
-	sprintf(timestring, "%2d:%02d:%02d %s", hour, minute, second, ampm.c_str());
-	Serial.println(timestring);
-	Serial.flush();
+	int year = currentTime.Year;
+	int month = currentTime.Month;
+	int day = currentTime.Day;
+//	String dst = tm.tm_isdst
+	char timestring[23];
+	sprintf(timestring, "%2d:%02d:%02d %s %04d-%02d-%02d", hour, minute, second, ampm.c_str(), year, month, day);
+	Serial.println(timestring); Serial.flush();
+}
+
+void new_rtc_fetch() {
+	struct tm timeinfo;
+	if(!getLocalTime(&timeinfo)){
+		Serial.println("Failed to obtain time");
+		return;
+	}
+	currentTime.Hour = timeinfo.tm_hour;
+	currentTime.Minute = timeinfo.tm_min;
+	currentTime.Second = timeinfo.tm_sec;
+	currentTime.Year = timeinfo.tm_year;
+	currentTime.Month = timeinfo.tm_mon;
+	currentTime.Day = timeinfo.tm_mday;
 }
 
 void rtc_fetch() {
 	currentTime.Hour = rtc.getHour();
 	currentTime.Minute = rtc.getMinute();
 	currentTime.Second = rtc.getSecond();
+	currentTime.Year = rtc.getYear();
+	currentTime.Month = rtc.getMonth() + 1;
+	currentTime.Day = rtc.getDay();
+	setTime(currentTime.Year, currentTime.Month, currentTime.Day, currentTime.Hour, currentTime.Minute, currentTime.Second, 0);
 }
 
 void time_advance_old(uint8_t seconds) {
@@ -327,23 +407,23 @@ void draw_fresh_clock_face_if_necessary_or_just_clear_previous_clock_hands() {
 }
 
 void get_time_from_ntp_or_rtc() {
-	bool should_get_time_from_rtc = false;
-	if (rtc_is_broken) {
-		should_get_time_from_rtc = true;
-	}
+	bool should_get_time_from_ntp = false;
+//	if (rtc_is_broken) {
+//		should_get_time_from_ntp = true;
+//	}
 	if (0==currentTime.Hour && 0==currentTime.Minute) {
-		should_get_time_from_rtc = true;
+		should_get_time_from_ntp = true;
 	}
 #ifdef DEBUG
 	if (57==currentTime.Minute) {
-		should_get_time_from_rtc = true;
+		should_get_time_from_ntp = true;
 	}
 #else
 	if (23==currentTime.Hour && 57==currentTime.Minute) {
-		should_get_time_from_rtc = true;
+		should_get_time_from_ntp = true;
 	}
 #endif
-	if (should_get_time_from_rtc) {
+	if (should_get_time_from_ntp) {
 		setTimeViaNTP();
 	}
 	rtc_fetch();
@@ -351,23 +431,21 @@ void get_time_from_ntp_or_rtc() {
 }
 
 void draw_new_clock_hands() {
-		drawClock(currentTime, DARK_COLOR);
-		lastTime = currentTime;
-		Serial.println("done with drawclock(DARK_COLOR)");
-		Serial.flush();
+	drawClock(currentTime, DARK_COLOR);
+	lastTime = currentTime;
+	Serial.println("done with drawclock(DARK_COLOR)"); Serial.flush();
 }
 
 void update_the_display() {
 	if (should_draw_clock_face) {
 		display.display();
 		Serial.println("done with full refresh");
-		Serial.flush();
 		should_draw_clock_face = false;
 	} else {
 		display.partialUpdate(); // Updates only the changed parts of the screen. (monochrome/INKPLATE_1BIT mode only!)
 		Serial.println("done with partial refresh");
-		Serial.flush();
 	}
+	Serial.flush();
 }
 
 void wait_for_next_second() {
@@ -461,9 +539,9 @@ void setup() {
 		esp_sleep_enable_ext0_wakeup(RTC_PIN, 0); //enable deep sleep wake on RTC interrupt
 		esp_deep_sleep_start();
 	#endif
-	if (rtc_is_broken) {
-		rtc.reset();
-	}
+//	if (rtc_is_broken) {
+//		rtc.reset();
+//	}
 	get_time_from_ntp_or_rtc();
 	should_draw_clock_face = true;
 	duration = how_long_to_wait_until_just_before_the_end_of_the_minute(10);
