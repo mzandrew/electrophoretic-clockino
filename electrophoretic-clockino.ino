@@ -1,5 +1,5 @@
 // written 2021-08-05 by mza
-// last updated 2021-12-14 by mza
+// last updated 2023-06-16 by mza
 
 // cobbled together from:
 // inkplate10 example code/docs https://inkplate.readthedocs.io/en/latest/arduino.html#inkplate-drawthickline
@@ -8,6 +8,16 @@
 // adafruit example code
 // Watchy code https://github.com/mzandrew/Watchy
 // custom stuff
+
+// installation:
+// sudo apt remove -y brltty
+// sudo apt install -y arduino python3-pip
+// pip3 install pyserial
+// preferences / board definitions: add // https://github.com/SolderedElectronics/Dasduino-Board-Definitions-for-Arduino-IDE/raw/master/package_Dasduino_Boards_index.json
+// boards manager: install inkplate
+// select board: "e-radionica.com inkplate10"
+// library manager: install adafruit-gfx, inkplate, timelib
+// "soldered pcf85063a" library doesn't work, so see git clone note below
 
 #ifndef ARDUINO_INKPLATE10
 	#error "Wrong board selection for this example, please select Inkplate 10 in the boards menu."
@@ -23,7 +33,7 @@
 #include "secrets.h" // for wifi name/password
 #include <time.h>
 
-#define SERIAL_NUMBER 6
+#define SERIAL_NUMBER 5
 
 bool fake_ntp_server_connection = false;
 
@@ -581,4 +591,3 @@ void loop() {
 		duration = 30000; // aim for the center of the eye
 	#endif
 }
-
